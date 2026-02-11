@@ -36,3 +36,4 @@ swapper==1.4.0
 twine==6.1.0
 typing_extensions==4.15.0
 urllib3==2.4.0
+uuid6==2025.0.1

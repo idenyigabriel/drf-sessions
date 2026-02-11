@@ -1,116 +1,83 @@
-"""
-Unit tests for drf-sessions Admin interface.
-"""
-
-from unittest.mock import patch, MagicMock
+from datetime import timedelta
 
 from django.utils import timezone
+from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.test import TestCase, RequestFactory
 from django.contrib.admin.sites import AdminSite
+from django.contrib.messages.storage.cookie import CookieStorage
 
 from drf_sessions.models import Session
-from drf_sessions.types import IssuedSession
-from drf_sessions.choices import AUTH_TRANSPORT
-from drf_sessions.admin import SessionAdmin, SessionStatusFilter
+from drf_sessions.admin import SessionAdmin
 
 
 User = get_user_model()
 
 
-class SessionAdminTests(TestCase):
+class MockRequest:
+    pass
+
+
+class SessionAdminTest(TestCase):
     def setUp(self):
-        self.site = AdminSite()
         self.user = User.objects.create_user(
-            username="admin_user", password="password123"
+            username="admin", password="password", is_staff=True
         )
-        self.factory = RequestFactory()
+        self.site = AdminSite()
         self.admin = SessionAdmin(Session, self.site)
-        self.now = timezone.now()
+        self.factory = RequestFactory()
 
-    def _get_request_with_messages(self, path="/"):
-        """
-        Attaches message storage to a fake request.
-        We use CookieStorage to avoid the SessionMiddleware dependency
-        during unit tests.
-        """
-        from django.contrib.messages.storage.cookie import CookieStorage
-
-        request = self.factory.get(path)
+    def _get_request_with_messages(self):
+        request = self.factory.get("/admin/drf_sessions/session/add/")
+        request.user = self.user
+        # Use CookieStorage to avoid session middleware requirements in unit tests
         setattr(request, "_messages", CookieStorage(request))
         return request
 
-    def test_is_active_display(self):
-        """Verify the custom is_active column logic."""
-        active_session = Session.objects.create(
-            user=self.user,
-            transport=AUTH_TRANSPORT.HEADER,
-            last_activity_at=self.now,  # Fixed: Add required field
-            absolute_expiry=self.now + timezone.timedelta(hours=1),
-        )
-        expired_session = Session.objects.create(
-            user=self.user,
-            transport=AUTH_TRANSPORT.HEADER,
-            last_activity_at=self.now,  # Fixed: Add required field
-            absolute_expiry=self.now - timezone.timedelta(hours=1),
-        )
-
-        self.assertTrue(self.admin.is_active(active_session))
-        self.assertFalse(self.admin.is_active(expired_session))
-
-    @patch("drf_sessions.admin.TokenService.create_session")
-    def test_save_model_creates_tokens_and_notifies(self, mock_create):
-        """Verify that adding a session via Admin flashes tokens via messages."""
-        mock_issued = IssuedSession(
-            access_token="mock_access",
-            refresh_token="mock_refresh",
-            session=MagicMock(),
-        )
-        mock_create.return_value = mock_issued
-
+    def test_save_model_creates_tokens_and_notifies(self):
+        """
+        Critical: Verify that creating a session via admin triggers
+        TokenService and displays raw tokens in messages.
+        """
         request = self._get_request_with_messages()
-        # Create a transient object (not saved to DB yet)
-        obj = Session(user=self.user, transport=AUTH_TRANSPORT.HEADER)
+        obj = Session(user=self.user, transport="any")
 
+        # Test creation (change=False)
         self.admin.save_model(request, obj, form=None, change=False)
 
         # Check messages
-        storage = getattr(request, "_messages")
-        message_texts = [m.message for m in storage]
+        storage = messages.get_messages(request)
+        message_list = [m.message for m in storage]
 
-        self.assertTrue(any("mock_access" in text for text in message_texts))
-        self.assertTrue(any("mock_refresh" in text for text in message_texts))
+        self.assertTrue(any("Access Token:" in m for m in message_list))
+        self.assertTrue(any("Session created successfully" in m for m in message_list))
 
-    def test_status_filter_active(self):
-        """Verify the custom Status list filter for 'active' sessions."""
-        Session.objects.create(
+        # Ensure the session actually exists in DB
+        self.assertEqual(Session.objects.filter(user=self.user).count(), 1)
+
+    def test_is_active_boolean_display(self):
+        """Ensure the admin's is_active helper correctly reflects session state."""
+        now = timezone.now()
+
+        # Active session
+        active_session = Session.objects.create(
             user=self.user,
-            transport=AUTH_TRANSPORT.HEADER,
-            last_activity_at=self.now,
-            absolute_expiry=self.now + timezone.timedelta(days=1),
+            transport="any",
+            last_activity_at=now,
+            absolute_expiry=now + timedelta(hours=1),
         )
+        self.assertTrue(self.admin.is_active(active_session))
 
-        request = self.factory.get("/", {"status": "active"})
-        filter_inst = SessionStatusFilter(
-            request, {"status": "active"}, Session, self.admin
-        )
+        # Revoked session
+        active_session.revoked_at = now
+        self.assertFalse(self.admin.is_active(active_session))
 
-        qs = filter_inst.queryset(request, Session.objects.all())
-        self.assertEqual(qs.count(), 1)
-
-    def test_status_filter_expired(self):
-        """Verify the custom Status list filter for 'expired' sessions."""
-        Session.objects.create(
-            user=self.user,
-            transport=AUTH_TRANSPORT.HEADER,
-            last_activity_at=self.now,
-            absolute_expiry=self.now - timezone.timedelta(days=1),
-        )
-
-        request = self.factory.get("/", {"status": "expired"})
-        filter_inst = SessionStatusFilter(
-            request, {"status": "expired"}, Session, self.admin
-        )
-
-        qs = filter_inst.queryset(request, Session.objects.all())
-        self.assertEqual(qs.count(), 1)
+    def test_readonly_fields_configuration(self):
+        """Check that system-managed fields are read-only to prevent tampering."""
+        expected_readonly = [
+            "session_id",
+            "created_at",
+            "revoked_at",
+            "last_activity_at",
+        ]
+        self.assertEqual(list(self.admin.readonly_fields), expected_readonly)

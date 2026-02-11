@@ -2,7 +2,7 @@ import sys
 
 from django.test import SimpleTestCase
 
-from drf_sessions import compat as authentify_typing
+from drf_sessions import compat as drf_sessions_typing
 
 
 class TypingCompatibilityTests(SimpleTestCase):
@@ -22,12 +22,12 @@ class TypingCompatibilityTests(SimpleTestCase):
         }
 
         # Check that __all__ matches our expected list
-        self.assertEqual(set(authentify_typing.__all__), expected_exports)
+        self.assertEqual(set(drf_sessions_typing.__all__), expected_exports)
 
         # Verify each export is actually reachable on the module
         for name in expected_exports:
             with self.subTest(type_name=name):
-                self.assertTrue(hasattr(authentify_typing, name))
+                self.assertTrue(hasattr(drf_sessions_typing, name))
 
     def test_self_type_resolution(self):
         """Verify Self is imported from the correct source based on Python version."""
@@ -35,9 +35,9 @@ class TypingCompatibilityTests(SimpleTestCase):
             # In 3.11+, it should come from the standard typing module
             import typing
 
-            self.assertIs(authentify_typing.Self, typing.Self)
+            self.assertIs(drf_sessions_typing.Self, typing.Self)
         else:
             # Below 3.11, it must come from typing_extensions
             from typing_extensions import Self as TE_Self
 
-            self.assertIs(authentify_typing.Self, TE_Self)
+            self.assertIs(drf_sessions_typing.Self, TE_Self)

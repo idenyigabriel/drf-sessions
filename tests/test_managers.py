@@ -3,12 +3,13 @@ Unit tests for drf-sessions managers.
 """
 
 from datetime import timedelta
-from django.test import TestCase, override_settings
-from django.contrib.auth import get_user_model
-from django.utils import timezone
 
-from drf_sessions.models import Session, RefreshToken
+from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
+
 from drf_sessions.choices import AUTH_TRANSPORT
+from drf_sessions.models import Session, RefreshToken
+
 
 User = get_user_model()
 
@@ -120,42 +121,3 @@ class SessionManagerTests(TestCase):
 
         Session.objects.active().revoke()
         self.assertEqual(Session.objects.active().count(), 0)
-
-
-class RefreshTokenManagerTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            username="token_manager", password="password123"
-        )
-        self.issued = Session.objects.create_session(
-            user=self.user, transport=AUTH_TRANSPORT.HEADER
-        )
-        self.token_hash = "some_unique_hash"
-
-        self.refresh_token = RefreshToken.objects.create(
-            session=self.issued.session,
-            token_hash=self.token_hash,
-            expires_at=timezone.now() + timedelta(days=1),
-        )
-
-    def test_get_valid_token_success(self):
-        """Verify successful retrieval of a valid token."""
-        token = RefreshToken.objects.get_valid_token(self.token_hash)
-        self.assertIsNotNone(token)
-        self.assertEqual(token.token_hash, self.token_hash)
-
-    def test_get_valid_token_fails_if_consumed(self):
-        """Verify that consumed tokens are not returned."""
-        self.refresh_token.consumed_at = timezone.now()
-        self.refresh_token.save()
-
-        token = RefreshToken.objects.get_valid_token(self.token_hash)
-        self.assertIsNone(token)
-
-    def test_get_valid_token_fails_if_session_revoked(self):
-        """Verify that tokens from revoked sessions are not returned."""
-        self.issued.session.revoked_at = timezone.now()
-        self.issued.session.save()
-
-        token = RefreshToken.objects.get_valid_token(self.token_hash)
-        self.assertIsNone(token)

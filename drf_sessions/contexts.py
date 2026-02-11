@@ -7,7 +7,7 @@ through the dot-notation interface.
 """
 
 from drf_sessions.compat import Any, Dict
-from drf_sessions.settings import authentify_settings
+from drf_sessions.settings import drf_sessions_settings
 
 
 class ContextParams:
@@ -15,13 +15,12 @@ class ContextParams:
     Provides immutable dot-notation access to context dictionary.
 
     Attributes can be accessed via dot-notation (e.g., context.user_id).
-    Modification is blocked via __setattr__ to ensure the wrapper remains
-    read-only, though the underlying dictionary remains accessible via to_dict().
+    Modification is blocked via __setattr__ to ensure the wrapper remains read-only.
     """
 
     __slots__ = ("_data",)
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: Dict[str, Any]) -> None:
         """
         Initialize context wrapper.
 
@@ -56,7 +55,7 @@ class ContextParams:
         if name in self._data:
             return self._data[name]
 
-        if authentify_settings.RAISE_ON_MISSING_CONTEXT_ATTR:
+        if drf_sessions_settings.RAISE_ON_MISSING_CONTEXT_ATTR:
             raise AttributeError(f"Context has no parameter '{name}'")
 
         return None
@@ -68,15 +67,6 @@ class ContextParams:
     def __delattr__(self, name: str) -> None:
         """Blocks attribute deletion to enforce a read-only dot-notation interface."""
         raise TypeError(f"{self.__class__.__name__} does not support item deletion")
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Return the underlying dictionary.
-
-        Note: Returns the actual reference for performance. Modifying this
-        dictionary will affect the data stored in the wrapper.
-        """
-        return self._data
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self._data!r})"

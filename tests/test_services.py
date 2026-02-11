@@ -66,25 +66,40 @@ class TokenServiceTests(TestCase):
         self.assertIsNotNone(self.session.revoked_at)
         self.assertFalse(self.session.is_active)
 
-    @override_settings(
-        DRF_SESSIONS={
-            "ENABLE_SLIDING_SESSION": True,
-            "SLIDING_SESSION_MAX_LIFETIME": timedelta(days=30),
-        }
-    )
-    def test_sliding_window_updates_expiry(self):
-        """Verify that rotation slides the session absolute expiry forward."""
-        # Manually backdate the current expiry to ensure the slide is measurable
-        self.session.absolute_expiry = timezone.now() + timedelta(hours=1)
+    def test_refresh_token_slides_within_session_wall(self):
+        """
+        Verify that rotation slides the Refresh Token lease forward,
+        but never exceeds the Session's fixed absolute wall.
+        """
+        # 1. Set a fixed session wall (e.g., 2 days from now)
+        session_wall = timezone.now() + timedelta(days=2)
+        self.session.absolute_expiry = session_wall
         self.session.save()
 
-        TokenService.rotate_refresh_token(self.raw_refresh)
+        # 2. Set current refresh token to expire very soon (1 hour)
+        old_token = RefreshToken.objects.get(session=self.session)
+        old_expiry = timezone.now() + timedelta(hours=1)
+        old_token.expires_at = old_expiry
+        old_token.save()
 
-        self.session.refresh_from_db()
-        # Should now be ~30 days from 'now', which is greater than the 1 hour we set
-        self.assertGreater(
-            self.session.absolute_expiry, timezone.now() + timedelta(days=29)
+        # 3. Rotate with a TTL that WOULD exceed the wall (e.g., 7 days)
+        with override_settings(DRF_SESSIONS={"REFRESH_TOKEN_TTL": timedelta(days=7)}):
+            TokenService.rotate_refresh_token(self.raw_refresh)
+
+        # 4. Fetch the new token
+        new_token = RefreshToken.objects.filter(session=self.session).latest(
+            "created_at"
         )
+
+        # The new token's expiry should have slid forward past the old 1-hour expiry
+        self.assertGreater(new_token.expires_at, old_expiry)
+
+        # But it must be capped exactly at the Session's absolute_expiry wall
+        self.assertEqual(new_token.expires_at, session_wall)
+
+        # And the session wall itself must remain unchanged
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.absolute_expiry, session_wall)
 
     @override_settings(DRF_SESSIONS={"ROTATE_REFRESH_TOKENS": False})
     def test_disabled_rotation_returns_same_token(self):
@@ -99,8 +114,7 @@ class TokenServiceTests(TestCase):
     def test_rotate_fails_for_expired_token(self):
         """Ensure expired refresh tokens return None and block rotation."""
         token_instance = RefreshToken.objects.get(session=self.session)
-        # Use a DateField friendly value (yesterday)
-        token_instance.expires_at = timezone.now().date() - timedelta(days=1)
+        token_instance.expires_at = timezone.now() - timedelta(days=1)
         token_instance.save()
 
         result = TokenService.rotate_refresh_token(self.raw_refresh)

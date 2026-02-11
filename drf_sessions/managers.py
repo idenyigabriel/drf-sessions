@@ -2,16 +2,16 @@
 Database abstraction layer for authentication sessions.
 """
 
-from datetime import timedelta
 from typing import Optional
+from datetime import timedelta
 
 from swapper import load_model
 from django.utils import timezone
 from django.db import models, transaction
 from django.contrib.auth.models import update_last_login
 
-from drf_sessions.settings import authentify_settings
 from drf_sessions.types import IssuedSession
+from drf_sessions.settings import drf_sessions_settings
 from drf_sessions.utils.tokens import generate_access_token, generate_refresh_token
 
 
@@ -20,7 +20,10 @@ class SessionQuerySet(models.QuerySet):
 
     def active(self):
         """Returns sessions that are not revoked and within their absolute lifetime."""
-        return self.filter(revoked_at__isnull=True, absolute_expiry__gt=timezone.now())
+        return self.filter(revoked_at__isnull=True).filter(
+            models.Q(absolute_expiry__gt=timezone.now())
+            | models.Q(absolute_expiry__isnull=True)
+        )
 
     def revoke(self) -> int:
         """Mass revokes sessions in the current queryset."""
@@ -52,20 +55,21 @@ class SessionManager(models.Manager):
         now = timezone.now()
 
         # 1. Update User's last_login if enabled in settings
-        if authentify_settings.UPDATE_LAST_LOGIN:
+        if drf_sessions_settings.UPDATE_LAST_LOGIN:
             update_last_login(None, user)
 
         # Enforce limits before creating a new one
         self._handle_session_limits(user)
 
         # Resolve Lifetimes
-        refresh_base = refresh_ttl or authentify_settings.REFRESH_TOKEN_TTL
-        max_sliding = authentify_settings.SLIDING_SESSION_MAX_LIFETIME
+        max_sliding = drf_sessions_settings.SLIDING_SESSION_MAX_LIFETIME
+        access_base = access_ttl or drf_sessions_settings.ACCESS_TOKEN_TTL
+        refresh_base = refresh_ttl or drf_sessions_settings.REFRESH_TOKEN_TTL
 
         # Absolute expiry is the hard deadline for the session
         # Use sliding limit if enabled, otherwise fallback to refresh TTL
-        expiry_delta = max_sliding if max_sliding else refresh_base
-        absolute_expiry = now + expiry_delta
+        expiry_delta = max_sliding or refresh_base or access_base
+        absolute_expiry = now + expiry_delta if expiry_delta else None
 
         session = self.create(
             user=user,
@@ -79,8 +83,12 @@ class SessionManager(models.Manager):
         raw_refresh = None
         if refresh_base:
             raw_refresh, token_hash = generate_refresh_token()
-            # Refresh token cannot outlive the session's wall
-            refresh_expires_at = min(now + refresh_base, absolute_expiry)
+
+            expiry_time = now + refresh_base
+            if absolute_expiry:
+                refresh_expires_at = min(expiry_time, absolute_expiry)
+            else:
+                refresh_expires_at = expiry_time
 
             # Accessing RefreshToken via swapper
             RefreshTokenModel = load_model("drf_sessions", "RefreshToken")
@@ -98,12 +106,12 @@ class SessionManager(models.Manager):
         active_sessions = self.active().filter(user=user).order_by("created_at")
 
         # 1. Single session enforcement
-        if authentify_settings.ENFORCE_SINGLE_SESSION:
+        if drf_sessions_settings.ENFORCE_SINGLE_SESSION:
             self._terminate_sessions(active_sessions)
             return
 
         # 2. Max sessions enforcement (FIFO)
-        max_limit = authentify_settings.MAX_SESSIONS_PER_USER
+        max_limit = drf_sessions_settings.MAX_SESSIONS_PER_USER
         if max_limit is not None:
             count = active_sessions.count()
             if count >= max_limit:
@@ -116,27 +124,7 @@ class SessionManager(models.Manager):
 
     def _terminate_sessions(self, queryset) -> None:
         """Determines whether to soft-revoke or hard-delete based on settings."""
-        if authentify_settings.RETAIN_EXPIRED_SESSIONS:
+        if drf_sessions_settings.RETAIN_EXPIRED_SESSIONS:
             queryset.revoke()
         else:
             queryset.delete()
-
-
-class RefreshTokenManager(models.Manager):
-    """Manager for handling RefreshToken lifecycle."""
-
-    def get_valid_token(self, token_hash: str):
-        """
-        Retrieves a token only if it is unused and its parent session is active.
-        """
-        return (
-            self.select_related("session", "session__user")
-            .filter(
-                token_hash=token_hash,
-                consumed_at__isnull=True,
-                expires_at__gt=timezone.now(),
-                session__revoked_at__isnull=True,
-                session__absolute_expiry__gt=timezone.now(),
-            )
-            .first()
-        )

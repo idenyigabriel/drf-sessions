@@ -81,7 +81,7 @@ class RefreshTokenModelTests(TestCase):
 
     def test_token_is_expired_property(self):
         """Verify that is_expired correctly compares against current date."""
-        today = timezone.now().date()
+        today = timezone.now()
 
         # Case 1: Token valid until tomorrow
         token = RefreshToken.objects.create(
@@ -100,7 +100,7 @@ class RefreshTokenModelTests(TestCase):
         """Ensure that deleting a session removes all associated refresh tokens."""
         RefreshToken.objects.create(
             token_hash="hash123",
-            expires_at=timezone.now().date() + timedelta(days=1),
+            expires_at=timezone.now() + timedelta(days=1),
             session=self.session,
         )
         self.assertEqual(RefreshToken.objects.count(), 1)
@@ -113,14 +113,14 @@ class RefreshTokenModelTests(TestCase):
         shared_hash = "unique_hash_value"
         RefreshToken.objects.create(
             token_hash=shared_hash,
-            expires_at=timezone.now().date() + timedelta(days=1),
+            expires_at=timezone.now() + timedelta(days=1),
             session=self.session,
         )
 
         with self.assertRaises(Exception):  # IntegrityError
             RefreshToken.objects.create(
                 token_hash=shared_hash,
-                expires_at=timezone.now().date() + timedelta(days=1),
+                expires_at=timezone.now() + timedelta(days=1),
                 session=self.session,
             )
 
@@ -128,7 +128,7 @@ class RefreshTokenModelTests(TestCase):
         """Verify consumed_at can be null and then updated."""
         token = RefreshToken.objects.create(
             token_hash="rotate_me",
-            expires_at=timezone.now().date() + timedelta(days=1),
+            expires_at=timezone.now() + timedelta(days=1),
             session=self.session,
         )
         self.assertIsNone(token.consumed_at)

@@ -2,15 +2,15 @@
 Orchestration layer for session and token lifecycles.
 """
 
-from datetime import timedelta
 from typing import Optional
+from datetime import timedelta
 
 from swapper import load_model
 from django.db import transaction
 from django.utils import timezone
 
 from drf_sessions.models import get_token_model
-from drf_sessions.settings import authentify_settings
+from drf_sessions.settings import drf_sessions_settings
 from drf_sessions.utils.tokens import (
     hash_token_string,
     generate_access_token,
@@ -18,6 +18,7 @@ from drf_sessions.utils.tokens import (
 )
 from drf_sessions.types import IssuedSession
 from drf_sessions.choices import AUTH_TRANSPORT
+
 
 SessionModel = get_token_model()
 
@@ -45,19 +46,61 @@ class TokenService:
         )
 
     @classmethod
-    def create_cookie_session(cls, user, **kwargs) -> IssuedSession:
+    def create_cookie_session(
+        cls,
+        user,
+        context: Optional[dict] = None,
+        access_ttl: Optional[timedelta] = None,
+        refresh_ttl: Optional[timedelta] = None,
+        **kwargs,
+    ) -> IssuedSession:
         """Creates a session restricted to HTTP-only cookies."""
-        return cls.create_session(user, transport=AUTH_TRANSPORT.COOKIE, **kwargs)
+        return cls.create_session(
+            user,
+            transport=AUTH_TRANSPORT.COOKIE,
+            context=context,
+            access_ttl=access_ttl,
+            refresh_ttl=refresh_ttl,
+            **kwargs,
+        )
 
     @classmethod
-    def create_header_session(cls, user, **kwargs) -> IssuedSession:
+    def create_header_session(
+        cls,
+        user,
+        context: Optional[dict] = None,
+        access_ttl: Optional[timedelta] = None,
+        refresh_ttl: Optional[timedelta] = None,
+        **kwargs,
+    ) -> IssuedSession:
         """Creates a session restricted to Authorization headers."""
-        return cls.create_session(user, transport=AUTH_TRANSPORT.HEADER, **kwargs)
+        return cls.create_session(
+            user,
+            transport=AUTH_TRANSPORT.HEADER,
+            context=context,
+            access_ttl=access_ttl,
+            refresh_ttl=refresh_ttl,
+            **kwargs,
+        )
 
     @classmethod
-    def create_universal_session(cls, user, **kwargs) -> IssuedSession:
+    def create_universal_session(
+        cls,
+        user,
+        context: Optional[dict] = None,
+        access_ttl: Optional[timedelta] = None,
+        refresh_ttl: Optional[timedelta] = None,
+        **kwargs,
+    ) -> IssuedSession:
         """Creates a flexible session valid for any transport method."""
-        return cls.create_session(user, transport=AUTH_TRANSPORT.ANY, **kwargs)
+        return cls.create_session(
+            user,
+            transport=AUTH_TRANSPORT.ANY,
+            context=context,
+            access_ttl=access_ttl,
+            refresh_ttl=refresh_ttl,
+            **kwargs,
+        )
 
     @staticmethod
     @transaction.atomic
@@ -82,7 +125,7 @@ class TokenService:
 
         # 1. Reuse Detection
         if token_instance.consumed_at is not None:
-            if authentify_settings.REVOKE_SESSION_ON_REUSE:
+            if drf_sessions_settings.REVOKE_SESSION_ON_REUSE:
                 session.revoked_at = now
                 session.save(update_fields=["revoked_at"])
             return None
@@ -91,34 +134,27 @@ class TokenService:
         if token_instance.is_expired or session.revoked_at:
             return None
 
-        # 3. Sliding Window Logic
-        # If enabled, we push the 'absolute_expiry' forward from 'now'.
-        if authentify_settings.ENABLE_SLIDING_SESSION:
-            sliding_limit = authentify_settings.SLIDING_SESSION_MAX_LIFETIME
-            if sliding_limit:
-                # We "slide" the wall forward.
-                # Note: Some implementations keep a 'created_at' + 'hard_limit'
-                # that never changes, but a "Sliding Window" usually means
-                # activity keeps the session alive.
-                session.absolute_expiry = now + sliding_limit
-
-        # 4. Update Activity
+        # 3. Update Activity
         session.last_activity_at = now
-        session.save(update_fields=["last_activity_at", "absolute_expiry"])
+        session.save(update_fields=["last_activity_at"])
 
-        # 5. Token Rotation
-        if authentify_settings.ROTATE_REFRESH_TOKENS:
+        # 4. Token Rotation
+        if drf_sessions_settings.ROTATE_REFRESH_TOKENS:
             token_instance.consumed_at = now
             token_instance.save(update_fields=["consumed_at"])
 
             new_raw_refresh, new_hash = generate_refresh_token()
-            refresh_ttl = authentify_settings.REFRESH_TOKEN_TTL
+            refresh_ttl = drf_sessions_settings.REFRESH_TOKEN_TTL
 
-            # Refresh token expiry is capped by the (potentially newly slid) session wall
-            new_expiry = min(now + refresh_ttl, session.absolute_expiry)
+            # Handle potential None in absolute_expiry
+            new_expiry = now + refresh_ttl
+            if session.absolute_expiry:
+                new_expiry = min(new_expiry, session.absolute_expiry)
 
             RefreshTokenModel.objects.create(
-                session=session, token_hash=new_hash, expires_at=new_expiry
+                session=session,
+                token_hash=new_hash,
+                expires_at=new_expiry,
             )
             refresh_token_to_return = new_raw_refresh
         else:

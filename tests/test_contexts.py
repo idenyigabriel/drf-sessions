@@ -12,7 +12,6 @@ class ContextParamsTests(SimpleTestCase):
 
         self.assertEqual(context.user_id, 1)
         self.assertEqual(context.scope, "read")
-        self.assertEqual(context.to_dict(), data)
 
     def test_initialization_raises_type_error(self):
         """Should raise TypeError if data is not a dict."""

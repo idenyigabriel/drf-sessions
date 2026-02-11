@@ -45,7 +45,10 @@ class SessionStatusFilter(admin.SimpleListFilter):
         if self.value() == "revoked":
             return queryset.filter(revoked_at__isnull=False)
         if self.value() == "expired":
-            return queryset.filter(absolute_expiry__lte=timezone.now())
+            return queryset.filter(
+                absolute_expiry__isnull=False,
+                absolute_expiry__lte=timezone.now(),
+            )
         return queryset
 
 
@@ -64,40 +67,48 @@ class SessionAdmin(admin.ModelAdmin):
     search_fields = ["user__username", "user__email", "session_id"]
     raw_id_fields = ["user"]
     inlines = [RefreshTokenInline]
-    readonly_fields = ["last_activity_at"]
+    readonly_fields = ["session_id", "created_at", "revoked_at", "last_activity_at"]
+    actions = ["revoke_sessions"]
 
     def is_active(self, obj):
-        return obj.revoked_at is None and obj.absolute_expiry > timezone.now()
+        if obj.revoked_at:
+            return False
+        return obj.absolute_expiry is None or obj.absolute_expiry > timezone.now()
 
     is_active.boolean = True
-    is_active.short_description = _("Active")
+
+    @admin.action(description=_("Revoke selected sessions"))
+    def revoke_sessions(self, request, queryset):
+        count = queryset.revoke()
+        self.message_user(request, _(f"{count} sessions were successfully revoked."))
 
     def save_model(self, request, obj, form, change):
-        """
-        If creating a session, use TokenService to generate initial tokens.
-        """
         if not change:
-            # Use the service to handle the "FIFO" limits and token generation
+            # We use the form's cleaned data for absolute_expiry if manually set
             issued = TokenService.create_session(
                 user=obj.user,
                 transport=obj.transport,
                 context=obj.context,
-                # absolute_expiry is handled by the form/manager
+                # Note: SessionManager will calculate its own expiry,
+                # but you could pass form.cleaned_data['absolute_expiry'] if desired.
             )
 
-            # Display tokens to admin once
             messages.success(request, _("Session created successfully."))
             messages.info(request, f"🗝 Access Token: {issued.access_token}")
             if issued.refresh_token:
                 messages.info(request, f"🔄 Refresh Token: {issued.refresh_token}")
-        else:
-            super().save_model(request, obj, form, change)
+
+            # Prevent the default save because create_session already created it
+            return
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(RefreshToken)
 class RefreshTokenAdmin(admin.ModelAdmin):
     """Separate admin for deep-diving into specific refresh tokens."""
 
+    readonly_fields = ["token_hash", "created_at"]
+    list_filter = ["consumed_at", "created_at"]
     list_display = [
         "token_hash",
         "session_user",
@@ -105,8 +116,6 @@ class RefreshTokenAdmin(admin.ModelAdmin):
         "expires_at",
         "consumed_at",
     ]
-    readonly_fields = ["session", "token_hash", "created_at"]
-    list_filter = ["consumed_at", "created_at"]
 
     def session_user(self, obj):
         return obj.session.user

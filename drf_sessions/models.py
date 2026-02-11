@@ -13,7 +13,6 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from drf_sessions.compat import Type
-from drf_sessions.managers import RefreshTokenManager
 from drf_sessions.base.models import BaseModel, AbstractSession
 
 
@@ -39,7 +38,7 @@ class Session(AbstractSession):
 
 class RefreshToken(BaseModel):
     """
-    A short-lived, rotating credential used to generate new access tokens.
+    A long-lived, rotating credential used to generate new access tokens.
 
     Implements a one-time-use (rotation) pattern where tokens are marked
     as consumed upon use. Linked to a parent Session to allow for
@@ -47,7 +46,7 @@ class RefreshToken(BaseModel):
     """
 
     token_hash = models.CharField(max_length=255, unique=True)
-    expires_at = models.DateField(db_index=True)
+    expires_at = models.DateTimeField()
     consumed_at = models.DateTimeField(null=True, blank=True)
     session = models.ForeignKey(
         swapper.get_model_name("drf_sessions", "Session"),
@@ -55,20 +54,19 @@ class RefreshToken(BaseModel):
         related_name="refresh_tokens",
     )
 
-    objects = RefreshTokenManager()
-
     class Meta(BaseModel.Meta):
         verbose_name = _("Refresh Token")
         verbose_name_plural = _("Refresh Tokens")
         indexes = [
             models.Index(
-                fields=["consumed_at", "expires_at"], name="refresh_token_lookup_idx"
+                fields=["session", "created_at"], name="token_session_lookup_idx"
             ),
             models.Index(
-                fields=["session", "consumed_at"], name="session_token_status_idx"
+                fields=["token_hash", "consumed_at", "expires_at"],
+                name="token_rotation_val_idx",
             ),
         ]
 
     @property
     def is_expired(self) -> bool:
-        return timezone.now().date() > self.expires_at
+        return timezone.now() > self.expires_at

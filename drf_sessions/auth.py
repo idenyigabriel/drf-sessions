@@ -9,7 +9,7 @@ from rest_framework.request import Request
 from rest_framework.authentication import get_authorization_header
 
 from drf_sessions.compat import Optional
-from drf_sessions.settings import authentify_settings
+from drf_sessions.settings import drf_sessions_settings
 from drf_sessions.base.auth import BaseCookieAuthentication, BaseHeaderAuthentication
 
 
@@ -23,7 +23,7 @@ class BearerAuthentication(BaseHeaderAuthentication):
 
     def extract_token(self, request: Request) -> Optional[str]:
         auth = get_authorization_header(request).split()
-        allowed_types = authentify_settings.AUTH_HEADER_TYPES
+        allowed_types = drf_sessions_settings.AUTH_HEADER_TYPES
 
         if not auth:
             return None
@@ -53,7 +53,7 @@ class CookieAuthentication(BaseCookieAuthentication):
 
     def extract_token(self, request: Request) -> Optional[str]:
         # Iterate through allowed names; return the first one found
-        cookie_names = authentify_settings.AUTH_COOKIE_NAMES
+        cookie_names = drf_sessions_settings.AUTH_COOKIE_NAMES
 
         for name in cookie_names:
             token = request.COOKIES.get(name)

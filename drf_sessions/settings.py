@@ -99,7 +99,7 @@ TYPE_VALIDATORS = {
 }
 
 
-class AuthentifySettings:
+class DRFSessionsSettings:
     """
     Lazy settings container for DRF Sessions.
     """
@@ -240,12 +240,12 @@ class AuthentifySettings:
         self._sync_swapper()
 
 
-authentify_settings = AuthentifySettings(getattr(settings, "DRF_SESSIONS", None))
+drf_sessions_settings = DRFSessionsSettings(getattr(settings, "DRF_SESSIONS", None))
 
 
-def reload_authentify_settings(*args, **kwargs):
+def reload_drf_sessions_settings(*args, **kwargs):
     if kwargs.get("setting") == "DRF_SESSIONS":
-        authentify_settings.reload(kwargs.get("value"))
+        drf_sessions_settings.reload(kwargs.get("value"))
 
 
-setting_changed.connect(reload_authentify_settings)
+setting_changed.connect(reload_drf_sessions_settings)

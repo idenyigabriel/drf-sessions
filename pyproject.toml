@@ -1,28 +1,14 @@
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "drf-authentify"
-version = "0.6.2"
+name = "drf-sessions"
+version = "1.0.0"
 description = "A simple authentication module for Django REST Framework"
 readme = { file = "README.md", content-type = "text/markdown" }
-license = { file = "LICENSE" }
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+
 keywords = ["django", "django-rest-framework", "jwt", "authentication", "session-management", "security", "python", "drf"]
-
-authors = [
-    { name = "Gabriel Idenyi" }
-]
-
+authors = [{ name = "Gabriel Idenyi" }]
 requires-python = ">=3.9"
-
-dependencies = [
-    "Django>=4.2,<6.0",
-    "djangorestframework>=3.14,<4.0",
-    "PyJWT>=2.11,<3.0",
-    "swapper>=1.3,<2.0",
-    "typing_extensions; python_version < '3.11'",
-]
 
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -33,18 +19,32 @@ classifiers = [
     "Framework :: Django :: 5.1",
     "Framework :: Django :: 5.2",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: BSD License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
-    "Programming Language :: Python",
-    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: Session",
 ]
+
+dependencies = [
+    "Django>=4.2,<6.0",
+    "djangorestframework>=3.14,<4.0",
+    "PyJWT>=2.11,<3.0",
+    "swapper>=1.3,<2.0",
+    "uuid6==2025.0.1",
+    "typing-extensions>=4.0; python_version < '3.11'",
+]
+
+[tool.setuptools.packages.find]
+include = ["drf_sessions*"]
+exclude = ["drf_sessions_project*", "tests*", "docs*"]
+
+[project.optional-dependencies]
+crypto = ["cryptography>=3.4.0"]
 
 [project.urls]
 Homepage = "https://github.com/idenyigabriel/drf-sessions"
