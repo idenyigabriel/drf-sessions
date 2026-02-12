@@ -12,8 +12,8 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.authentication import BaseAuthentication
 
-from drf_sessions.models import get_token_model
 from drf_sessions.choices import AUTH_TRANSPORT
+from drf_sessions.models import get_session_model
 from drf_sessions.settings import drf_sessions_settings
 from drf_sessions.utils.tokens import verify_access_token
 from drf_sessions.compat import TYPE_CHECKING, Tuple, Optional
@@ -52,7 +52,7 @@ class BaseSessionAuthentication(BaseAuthentication):
         """
         Verifies the session state in the database.
         """
-        Session = get_token_model()
+        Session = get_session_model()
         session_id = payload.get(drf_sessions_settings.SESSION_ID_CLAIM)
 
         if not session_id:

@@ -231,7 +231,7 @@ class DRFSessionsSettings:
 
     def _sync_swapper(self):
         session_model = self._get_setting("SESSION_MODEL")
-        setattr(settings, "drf_sessions_SESSION_MODEL", session_model)
+        setattr(settings, "DRF_SESSIONS_SESSION_MODEL", session_model)
 
     def reload(self, new_user_settings=None):
         self._user_settings = new_user_settings or {}

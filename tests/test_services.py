@@ -9,12 +9,12 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from drf_sessions.services import SessionService
-from drf_sessions.models import RefreshToken, get_token_model
+from drf_sessions.models import RefreshToken, get_session_model
 from drf_sessions.choices import AUTH_TRANSPORT
 
 
 User = get_user_model()
-SessionModel = get_token_model()
+SessionModel = get_session_model()
 
 
 class SessionServiceTests(TestCase):
@@ -120,12 +120,12 @@ class SessionServiceTests(TestCase):
         result = SessionService.rotate_refresh_token(self.raw_refresh)
         self.assertIsNone(result)
 
-    def test_revoke_user_tokens(self):
+    def test_revoke_user_sessions(self):
         """Verify that all user tokens are revoked."""
         user = User.objects.create_user(username="user", password="password123")
         SessionService.create_cookie_session(user).session
         SessionService.create_header_session(user).session
 
         self.assertEqual(SessionModel.objects.filter(user=user).count(), 2)
-        SessionService.revoke_user_tokens(user)
+        SessionService.revoke_user_sessions(user)
         self.assertEqual(SessionModel.objects.filter(user=user).count(), 0)

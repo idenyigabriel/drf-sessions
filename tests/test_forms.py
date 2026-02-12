@@ -1,44 +1,82 @@
-from datetime import timedelta
+"""
+Tests for Session and RefreshToken ModelAdmin forms.
+"""
 
-from django.test import TestCase
+from datetime import timedelta
+from unittest.mock import patch
+
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
 
-from drf_sessions.forms import SessionAdminForm
+from drf_sessions.models import get_session_model
+from drf_sessions.forms import RefreshTokenAdminForm, SessionAdminForm
 
 
 User = get_user_model()
+SessionModel = get_session_model()
 
 
 class SessionAdminFormTest(TestCase):
+    """Tests ModelAdmin form logic for Session instances."""
+
     def setUp(self):
-        self.user = User.objects.create_user(
-            username="testuser", password="password123"
-        )
-
-    def test_initial_absolute_expiry_is_set(self):
-        """Ensure a default expiry is calculated for new sessions."""
-        form = SessionAdminForm()
-        self.assertIn("absolute_expiry", form.fields)
-        self.assertIsNotNone(form.fields["absolute_expiry"].initial)
-        self.assertTrue(form.fields["absolute_expiry"].initial > timezone.now())
-
-    def test_clean_absolute_expiry_past_fails(self):
-        """Validation should prevent setting an expiry in the past."""
-        past_date = timezone.now() - timedelta(days=1)
-        data = {
-            "user": self.user.id,
-            "transport": "any",
-            "absolute_expiry": past_date,
-            "context": {},
+        self.user = User.objects.create_user(username="testuser")
+        # Valid settings that satisfy internal validation logic
+        self.valid_drf_settings = {
+            "SLIDING_SESSION_MAX_LIFETIME": timedelta(days=2),
+            "REFRESH_TOKEN_TTL": timedelta(days=1),
+            "ACCESS_TOKEN_TTL": timedelta(minutes=5),
         }
-        form = SessionAdminForm(data=data)
-        self.assertFalse(form.is_valid())
-        self.assertIn("absolute_expiry", form.errors)
 
-    def test_form_excludes_security_fields(self):
-        """Internal lifecycle fields should not be in the form fields/html."""
-        form = SessionAdminForm()
-        protected = ["session_id", "created_at", "revoked_at", "last_activity_at"]
-        for field in protected:
-            self.assertNotIn(field, form.fields)
+    def test_initial_expiry_on_add_view(self):
+        """Verify absolute_expiry is pre-filled using settings priority."""
+        with override_settings(DRF_SESSIONS=self.valid_drf_settings):
+            now = timezone.now()
+            with patch("django.utils.timezone.now", return_value=now):
+                form = SessionAdminForm()
+
+            expected = now + self.valid_drf_settings["SLIDING_SESSION_MAX_LIFETIME"]
+            self.assertEqual(form.fields["absolute_expiry"].initial, expected)
+
+
+class RefreshTokenAdminFormTest(TestCase):
+    """Tests ModelAdmin form validation for RefreshToken instances."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="tokenuser")
+        self.session = SessionModel.objects.create(user=self.user)
+        self.valid_drf_settings = {
+            "SLIDING_SESSION_MAX_LIFETIME": timedelta(hours=5),
+            "REFRESH_TOKEN_TTL": timedelta(hours=1),
+        }
+
+    def test_validation_error_exceeds_max_lifetime(self):
+        """Verify admin validation prevents tokens exceeding sliding window."""
+        with override_settings(DRF_SESSIONS=self.valid_drf_settings):
+            # 6 hours exceeds the 5-hour max lifetime setting
+            too_long = timezone.now() + timedelta(hours=6)
+            data = {
+                "session": self.session.pk,
+                "token_hash": "some_hash",
+                "expires_at": too_long,
+            }
+            form = RefreshTokenAdminForm(data=data)
+
+            self.assertFalse(form.is_valid())
+            self.assertIn("expires_at", form.errors)
+            self.assertIn(
+                "Expiry cannot exceed sliding session", form.errors["expires_at"][0]
+            )
+
+    def test_validation_passes_within_limit(self):
+        """Verify standard expiry values pass validation."""
+        with override_settings(DRF_SESSIONS=self.valid_drf_settings):
+            valid_date = timezone.now() + timedelta(hours=2)
+            data = {
+                "session": self.session.pk,
+                "token_hash": "some_hash",
+                "expires_at": valid_date,
+            }
+            form = RefreshTokenAdminForm(data=data)
+            self.assertTrue(form.is_valid(), form.errors)

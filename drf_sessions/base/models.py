@@ -43,14 +43,14 @@ class AbstractSession(BaseModel):
         default=generate_session_id, unique=True, editable=False
     )
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sessions"
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+"
     )
 
     transport = models.CharField(max_length=6, choices=AUTH_TRANSPORT.choices)
     context = models.JSONField(default=dict, blank=True, validators=[validate_context])
 
-    last_activity_at = models.DateTimeField()
     revoked_at = models.DateTimeField(null=True, blank=True)
+    last_activity_at = models.DateTimeField(default=timezone.now)
     absolute_expiry = models.DateTimeField(null=True, blank=True, db_index=True)
 
     objects: SessionManager = SessionManager()
@@ -78,6 +78,7 @@ class AbstractSession(BaseModel):
         return ContextParams(self.context)
 
     def revoke(self, commit: bool = True) -> None:
-        self.revoked_at = timezone.now()
-        if commit:
-            self.save(update_fields=["revoked_at"])
+        if self.revoked_at is None:
+            self.revoked_at = timezone.now()
+            if commit:
+                self.save(update_fields=["revoked_at"])

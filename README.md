@@ -770,9 +770,9 @@ issued = SessionService.create_universal_session(
 #### Using Session Manager Directly
 
 ```python
-from drf_sessions.models import get_token_model
+from drf_sessions.models import get_session_model
 
-Session = get_token_model()
+Session = get_session_model()
 
 issued = Session.objects.create_session(
     user=user,
@@ -832,9 +832,9 @@ With `ROTATE_REFRESH_TOKENS=False`:
 
 ```python
 # In a logout view
-from drf_sessions.models import get_token_model
+from drf_sessions.models import get_session_model
 
-Session = get_token_model()
+Session = get_session_model()
 
 # Revoke current session
 request.auth.revoked_at = timezone.now()
@@ -1146,9 +1146,9 @@ python manage.py migrate
 ### Using Custom Model
 
 ```python
-from drf_sessions.models import get_token_model
+from drf_sessions.models import get_session_model
 
-Session = get_token_model()  # Returns your CustomSession
+Session = get_session_model()  # Returns your CustomSession
 
 # Create session with custom fields
 issued = Session.objects.create_session(
@@ -1505,7 +1505,7 @@ Exchanges a refresh token for new credentials.
 
 **Returns:** `IssuedSession` or `None` if invalid/expired
 
-#### `revoke_user_tokens(user)`
+#### `revoke_user_sessions(user)`
 
 Revokes all of users tokens based on the configuration for expired tokens.
 
@@ -1777,10 +1777,10 @@ Once all clients migrated, remove SessionAuthentication.
 
 **Solutions:**
 ```python
-# Use get_token_model() instead of direct import
-from drf_sessions.models import get_token_model
+# Use get_session_model() instead of direct import
+from drf_sessions.models import get_session_model
 
-Session = get_token_model()
+Session = get_session_model()
 ```
 
 #### "This session is restricted to X transport"
@@ -1812,13 +1812,13 @@ Create periodic task to delete expired sessions:
 
 ```python
 from django.utils import timezone
-from drf_sessions.models import get_token_model
+from drf_sessions.models import get_session_model
 from drf_sessions.services import SessionService
 
-Session = get_token_model()
+Session = get_session_model()
 
 # Delete all user tokens
-SessionService.revoke_user_tokens(user)
+SessionService.revoke_user_sessions(user)
 
 # Delete expired sessions
 Session.objects.filter(

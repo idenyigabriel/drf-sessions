@@ -16,7 +16,7 @@ from drf_sessions.compat import Type
 from drf_sessions.base.models import BaseModel, AbstractSession
 
 
-def get_token_model() -> Type[AbstractSession]:
+def get_session_model() -> Type[AbstractSession]:
     """
     Resolves the active Session model class at runtime.
 
@@ -62,6 +62,14 @@ class RefreshToken(BaseModel):
                 name="token_rotation_val_idx",
             ),
         ]
+
+    def __str__(self) -> str:
+        state = (
+            "revoked"
+            if self.consumed_at
+            else ("expired" if self.is_expired else "active")
+        )
+        return f"Token {self.token_hash[:15]}… ({state})"
 
     @property
     def is_expired(self) -> bool:

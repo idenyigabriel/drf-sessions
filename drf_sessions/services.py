@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from drf_sessions.types import IssuedSession
 from drf_sessions.choices import AUTH_TRANSPORT
-from drf_sessions.models import get_token_model
+from drf_sessions.models import get_session_model
 from drf_sessions.compat import Optional, TYPE_CHECKING
 from drf_sessions.settings import drf_sessions_settings
 from drf_sessions.utils.tokens import (
@@ -20,10 +20,11 @@ from drf_sessions.utils.tokens import (
 )
 
 if TYPE_CHECKING:
+    from drf_sessions.base.models import AbstractSession
     from django.contrib.auth.models import AbstractBaseUser
 
 
-SessionModel = get_token_model()
+SessionModel = get_session_model()
 
 
 class SessionService:
@@ -169,6 +170,6 @@ class SessionService:
 
     @staticmethod
     @transaction.atomic
-    def revoke_user_tokens(user: "AbstractBaseUser") -> None:
+    def revoke_user_sessions(user: "AbstractBaseUser") -> None:
         """Revokes all of users tokens on the platform"""
         SessionModel.objects.filter(user=user).revoke()

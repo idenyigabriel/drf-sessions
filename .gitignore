@@ -29,3 +29,6 @@ db.sqlite3-journal
 dist
 drf_sessions.egg-info
 /build
+
+# custom files
+todo.md
