@@ -1615,7 +1615,7 @@ If migrating from DRF's built-in session authentication:
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'drf_sessions.auth.BearerAuthentication',
-        'rest_framework.authentication.SessionAuthentication',  # Keep temporarily
+        'rest_framework.authentication.SessionAuthentication',
     ),
 }
 ```
