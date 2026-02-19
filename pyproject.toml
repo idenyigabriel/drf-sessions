@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drf-sessions"
-version = "0.1.0"
+version = "0.1.1"
 description = "Stateful, database-backed session management for Django Rest Framework with JWT access tokens, rotating refresh tokens, and comprehensive security features"
 keywords = ["django", "django-rest-framework", "jwt", "authentication", "session-management", "security", "python", "drf", "refresh-token", "token-rotation", "stateful-jwt"]
 

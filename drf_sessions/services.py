@@ -38,6 +38,7 @@ class SessionService:
         context: Optional[dict] = None,
         access_ttl: Optional[timedelta] = None,
         refresh_ttl: Optional[timedelta] = None,
+        **kwargs,
     ) -> IssuedSession:
         """Standard entry point for session creation."""
         return SessionModel.objects.create_session(
@@ -46,6 +47,7 @@ class SessionService:
             context=context,
             access_ttl=access_ttl,
             refresh_ttl=refresh_ttl,
+            **kwargs,
         )
 
     @classmethod
