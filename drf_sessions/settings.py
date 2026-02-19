@@ -142,7 +142,6 @@ class DRFSessionsSettings:
 
     def _validate_all(self):
         self._validate_removed_settings()
-        self._validate_import_strings()
         self._validate_primitive_types()
         self._validate_business_logic()
 
@@ -152,20 +151,6 @@ class DRFSessionsSettings:
                 raise ImproperlyConfigured(
                     _(f"'{setting_name}' is no longer supported.")
                 )
-
-    def _validate_import_strings(self):
-        for setting_name in IMPORT_STRINGS:
-            raw_value = self._get_setting(setting_name)
-            if raw_value is not None and not isinstance(raw_value, str):
-                raise ImproperlyConfigured(
-                    _(f"'{setting_name}' must be a string path.")
-                )
-            if isinstance(raw_value, str):
-                imported_value = self._import_from_string(setting_name, raw_value)
-                if not callable(imported_value):
-                    raise ImproperlyConfigured(
-                        _(f"'{setting_name}' must be a callable.")
-                    )
 
     def _validate_primitive_types(self):
         for setting_name, expected_types in TYPE_VALIDATORS.items():

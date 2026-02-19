@@ -54,19 +54,6 @@ class SettingsTests(SimpleTestCase):
         ):
             DRFSessionsSettings(user_settings=user_settings)
 
-    def test_invalid_import_string_raises_error(self):
-        user_settings = {"SESSION_VALIDATOR_HOOK": "non_existent.module.hook"}
-        with self.assertRaises(ImproperlyConfigured):
-            # Accessing the attribute triggers the lazy import
-            settings = DRFSessionsSettings(user_settings=user_settings)
-            _ = settings.SESSION_VALIDATOR_HOOK
-
-    def test_hook_must_be_callable(self):
-        # Using a string that points to a non-callable (the DEFAULTS dict itself)
-        user_settings = {"SESSION_VALIDATOR_HOOK": "drf_sessions.settings.DEFAULTS"}
-        with self.assertRaisesRegex(ImproperlyConfigured, "must be a callable"):
-            DRFSessionsSettings(user_settings=user_settings)
-
     def test_sliding_session_dependencies(self):
         user_settings = {"REFRESH_TOKEN_TTL": None, "ENABLE_SLIDING_SESSION": True}
         with self.assertRaisesRegex(

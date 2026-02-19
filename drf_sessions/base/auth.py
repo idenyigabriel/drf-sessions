@@ -8,8 +8,6 @@ and enforces stateful validation against the database.
 
 import jwt
 from rest_framework.request import Request
-from django.utils.translation import gettext_lazy as _
-from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.authentication import BaseAuthentication
 
 from drf_sessions.choices import AUTH_TRANSPORT
@@ -39,26 +37,26 @@ class BaseSessionAuthentication(BaseAuthentication):
 
         try:
             payload = verify_access_token(token_str)
-        except jwt.ExpiredSignatureError:
-            raise AuthenticationFailed(_("Access token has expired."))
-        except jwt.InvalidTokenError:
-            raise AuthenticationFailed(_("Invalid access token."))
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            # Return None to allow other auth classes to try or AllowAny to pass.
+            return None
 
         return self.authenticate_credentials(request, payload)
 
     def authenticate_credentials(
         self, request: Request, payload: dict
-    ) -> Tuple["AbstractBaseUser", "AbstractSession"]:
+    ) -> Optional[Tuple["AbstractBaseUser", "AbstractSession"]]:
         """
         Verifies the session state in the database.
+        Returns None if authentication fails to maintain compatibility with AllowAny.
         """
         Session = get_session_model()
         session_id = payload.get(drf_sessions_settings.SESSION_ID_CLAIM)
 
         if not session_id:
-            raise AuthenticationFailed(_("Token missing session identifier."))
+            return None
 
-        # Hit the database for a stateful check.
+        # Stateful check: Ensure session exists and is active
         session = (
             Session.objects.select_related("user")
             .active()
@@ -66,11 +64,8 @@ class BaseSessionAuthentication(BaseAuthentication):
             .first()
         )
 
-        if not session:
-            raise AuthenticationFailed(_("Session is invalid or has been revoked."))
-
-        if not session.user or not session.user.is_active:
-            raise AuthenticationFailed(_("User account is inactive or deleted."))
+        if not session or not session.user or not session.user.is_active:
+            return None
 
         # Enforce Transport Security: Prevents session hijacking across transports
         if drf_sessions_settings.ENFORCE_SESSION_TRANSPORT:
@@ -78,25 +73,21 @@ class BaseSessionAuthentication(BaseAuthentication):
                 session.transport != AUTH_TRANSPORT.ANY
                 and session.transport != self.transport
             ):
-                raise AuthenticationFailed(
-                    _("This session is restricted to {0} transport.").format(
-                        session.transport
-                    )
-                )
+                return None
 
-        # Hook for IP consistency or other security policies
-        if drf_sessions_settings.SESSION_VALIDATOR_HOOK:
-            if not drf_sessions_settings.SESSION_VALIDATOR_HOOK(session, request):
-                raise AuthenticationFailed(_("Session failed security policy."))
+        # Custom security policy hook (e.g., IP check)
+        validator = drf_sessions_settings.SESSION_VALIDATOR_HOOK
+        if validator and not validator(session, request):
+            return None
 
-        # Final hook for updates and other custom user logic
+        # Final hook for custom logic (e.g., updating 'last_active')
         user, session = self.run_post_auth_hook(session.user, session, request)
 
         return (user, session)
 
     def run_post_auth_hook(
-        self, user: "AbstractSession", session: "AbstractSession", request: Request
-    ) -> Tuple:
+        self, user: "AbstractBaseUser", session: "AbstractSession", request: Request
+    ) -> Tuple["AbstractBaseUser", "AbstractSession"]:
         hook = drf_sessions_settings.POST_AUTHENTICATED_HOOK
         if hook:
             result = hook(user=user, session=session, request=request)
@@ -114,7 +105,6 @@ class BaseHeaderAuthentication(BaseSessionAuthentication):
     transport = AUTH_TRANSPORT.HEADER
 
     def authenticate_header(self, request: Request) -> str:
-        # We could use a setting here for 'Bearer', but 'Bearer' is the boring standard.
         return 'Bearer realm="api"'
 
 
@@ -124,5 +114,4 @@ class BaseCookieAuthentication(BaseSessionAuthentication):
     transport = AUTH_TRANSPORT.COOKIE
 
     def authenticate_header(self, request: Request) -> str:
-        # Informs the client that a session cookie is expected
         return 'Session realm="api"'
